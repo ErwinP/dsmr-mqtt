@@ -35,9 +35,9 @@
 #define MQTT_USER   "YYYY"
 #define MQTT_PASSWD "YYYY"
 #define MQTT_SERVER "FQDN or IP address"
+#define MQTT_PORT   8883
 #define MQTT_FP     "F7 ... 31"
 #endif
-#define MQTT_PORT   8883
 #define CLIENT_ID   "dsmr"
 #define INTERVAL    2000
 #define MQTT_BUFSIZE 1450
@@ -58,7 +58,7 @@ const char* ssid = STASSID;
 const char* password = STAPSK;
 
 // Initialise the WiFi Client object
-WiFiClientSecure wifiClient;
+WiFiClient wifiClient;
 
 // ============================ TLS ============================
 
@@ -104,8 +104,8 @@ void setup() {
   }
 
   // Setup TLS fingerprint
-  wifiClient.setFingerprint(fingerprint);
-  // wifiClient.setInsecure();
+  // wifiClient.setFingerprint(fingerprint);
+  wifiClient.setInsecure();
 
   // Set MQTT broker, port to use and the internal send/receive buffer size
   pubsubClient.setServer(mqtt_server, mqtt_port);
