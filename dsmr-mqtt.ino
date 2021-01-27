@@ -5,7 +5,7 @@
 #include <ESP8266mDNS.h>
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
-#include "dsmr-be.h"
+#include "dsmr-be.h"  //https://github.com/mrWheel/arduino-dsmr-be
 #include "credentials.h"
 
 /**
@@ -141,6 +141,7 @@ DSMRData data;
 // ============================ Setup ============================
 
 void setup() {
+  
   // setup LEDs
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
@@ -153,23 +154,61 @@ void setup() {
   Serial.begin(BAUD_RATE, SERIAL_8N1);
   U0C0 |= BIT(UCRXI); // Inverse RX
 
-  // setup the Wifi
+  // Say hello to the world
+  Serial.println("Well hello there");
+  Serial.println();
+  Serial.println("--> Following parameters are set: ");
+  Serial.println("Set SSID:");
+  Serial.println(STASSID);
+  Serial.println("Set MQTT server:");
+  Serial.println(MQTT_SERVER);
+  Serial.println("Set MQTT port:");
+  Serial.println(MQTT_PORT);
+  Serial.println("Set MQTT user:");
+  Serial.println(MQTT_USER);
+  Serial.println("<-- End");
+  Serial.println();
+
+  // setup the 
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    delay(5000);
-    ESP.restart();
+    delay(500);
+    Serial.print(".");
+
   }
+
+  Serial.println("");
+  Serial.println("WiFi connected!");  
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Netmask: ");
+  Serial.println(WiFi.subnetMask());
+  Serial.print("Gateway: ");
+  Serial.println(WiFi.gatewayIP());
+  
 
   // Setup TLS fingerprint
   // wifiClient.setFingerprint(fingerprint);
   // wifiClient.setInsecure();
 
   // Set MQTT broker, port to use and the internal send/receive buffer size
+  Serial.println();
+  Serial.println();
+  Serial.println("Setting up MQTT...");
   pubsubClient.setServer(mqtt_server, mqtt_port);
   pubsubClient.setBufferSize(MQTT_BUFSIZE);
+  Serial.println("   ... done");
   
   // setup the OTA
+  Serial.println();
+  Serial.println();
+  Serial.println("Setting up OTA...");
+  
   ArduinoOTA.onStart([]() {
     digitalWrite(LED_BLUE, ON);
     digitalWrite(LED_RED, OFF);
@@ -184,15 +223,23 @@ void setup() {
   });
   ArduinoOTA.begin();
 
+  Serial.println("   ... done");
+
   // start a read right away
   reader.enable(false); // with parameter once=false for continuous readings
 
 //  digitalWrite(LED_RED, ON);
   digitalWrite(LED_BLUE, OFF);
+
+  Serial.println();
+  Serial.println();
+  Serial.println("Finished setup, entering the DSMRData loop..");
 }
 
 // ============================ Loop ============================
 
+
+  
 void loop() {
 
   DSMRData data;
@@ -202,6 +249,9 @@ void loop() {
   ArduinoOTA.handle();
 
   if (!pubsubClient.connected()) {
+
+    Serial.println("Not connected to the MQTT broker?");
+    
     digitalWrite(LED_RED, OFF);
     currentMillis = millis();
     if (currentMillis - previousMillis >= interval) {
@@ -214,8 +264,10 @@ void loop() {
     pubsubClient.loop();
     reader.loop();
     if (reader.available()) {
+      Serial.println("DSMR Reader available!");
       digitalWrite(LED_BLUE, ON);
       if (reader.parse(&data, &err)) {
+        Serial.println("Going public!");
         publish(data);
       }
       digitalWrite(LED_BLUE, OFF);
@@ -227,7 +279,9 @@ void reconnect() {
   // Attempt to connect to the mqtt broker
   if (pubsubClient.connect(client_id, mqtt_user, mqtt_password)) {
     // Once connected, publish an announcement...
+    Serial.println("Sending first connection to the MQTT broker...");
     pubsubClient.publish(dsmr_topic, "CONNECTED");
+    Serial.println("   ... done");
   }
 }
 
