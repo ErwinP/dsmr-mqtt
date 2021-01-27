@@ -163,7 +163,7 @@ void setup() {
 
   // Setup TLS fingerprint
   // wifiClient.setFingerprint(fingerprint);
-  wifiClient.setInsecure();
+  // wifiClient.setInsecure();
 
   // Set MQTT broker, port to use and the internal send/receive buffer size
   pubsubClient.setServer(mqtt_server, mqtt_port);
