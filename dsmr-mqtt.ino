@@ -5,7 +5,7 @@
 #include <ESP8266mDNS.h>
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
-#include "dsmr.h"
+#include "dsmr-be.h"
 #include "credentials.h"
 
 /**
@@ -34,7 +34,7 @@
 
 #ifndef MQTT_USER
 #define MQTT_USER   "YYYY"
-#define MQTT_PASSWD "YYYY"
+#define MQTT_PASSWD "YYYY"ds
 #define MQTT_SERVER "FQDN or IP address"
 #define MQTT_PORT   8883
 #define MQTT_FP     "F7 ... 31"
