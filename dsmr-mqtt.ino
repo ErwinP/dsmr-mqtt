@@ -40,7 +40,7 @@
 #define MQTT_FP     "F7 ... 31"
 #endif
 #define CLIENT_ID   "dsmr"
-#define INTERVAL    2000
+#define INTERVAL    5000
 #define MQTT_BUFSIZE 1450
 
 // ============================ Wifi ============================
@@ -63,13 +63,14 @@ const char* mqtt_user = MQTT_USER;
 const char* mqtt_password = MQTT_PASSWD;
 const char* client_id = CLIENT_ID;
 const char* dsmr_topic = "dsmr";
+const char* dsmr_debug = "dsmr/debug";
 
 // Initialise the MQTT Client object
 PubSubClient pubsubClient(wifiClient); 
 
 // For (re)connecting, a non-blocking wait is used.
 unsigned long previousMillis = 0;
-unsigned long interval = INTERVAL;
+unsigned long interval = INTERVAL; // 5 seconds
 
 // ============================ DSMR ============================
 
@@ -80,6 +81,63 @@ unsigned long interval = INTERVAL;
  * code smaller.
  * Each template argument below results in a field of the same name.
  */
+
+// First define all data, used for debugging.
+using MyData = ParsedData<
+  /* String */ identification,
+  /* String */ p1_version,
+  /* String */ timestamp,
+  /* String */ equipment_id,
+  /* FixedValue */ energy_delivered_tariff1,
+  /* FixedValue */ energy_delivered_tariff2,
+  /* FixedValue */ energy_returned_tariff1,
+  /* FixedValue */ energy_returned_tariff2,
+  /* String */ electricity_tariff,
+  /* FixedValue */ power_delivered,
+  /* FixedValue */ power_returned,
+  /* FixedValue */ electricity_threshold,
+  /* uint8_t */ electricity_switch_position,
+  /* uint32_t */ electricity_failures,
+  /* uint32_t */ electricity_long_failures,
+  /* String */ electricity_failure_log,
+  /* uint32_t */ electricity_sags_l1,
+  /* uint32_t */ electricity_sags_l2,
+  /* uint32_t */ electricity_sags_l3,
+  /* uint32_t */ electricity_swells_l1,
+  /* uint32_t */ electricity_swells_l2,
+  /* uint32_t */ electricity_swells_l3,
+  /* String */ message_short,
+  /* String */ message_long,
+  /* FixedValue */ voltage_l1,
+  /* FixedValue */ voltage_l2,
+  /* FixedValue */ voltage_l3,
+  /* FixedValue */ current_l1,
+  /* FixedValue */ current_l2,
+  /* FixedValue */ current_l3,
+  /* FixedValue */ power_delivered_l1,
+  /* FixedValue */ power_delivered_l2,
+  /* FixedValue */ power_delivered_l3,
+  /* FixedValue */ power_returned_l1,
+  /* FixedValue */ power_returned_l2,
+  /* FixedValue */ power_returned_l3,
+  /* uint16_t */ gas_device_type,
+  /* String */ gas_equipment_id,
+  /* uint8_t */ gas_valve_position,
+  /* TimestampedFixedValue */ gas_delivered,
+  /* uint16_t */ thermal_device_type,
+  /* String */ thermal_equipment_id,
+  /* uint8_t */ thermal_valve_position,
+  /* TimestampedFixedValue */ thermal_delivered,
+  /* uint16_t */ water_device_type,
+  /* String */ water_equipment_id,
+  /* uint8_t */ water_valve_position,
+  /* TimestampedFixedValue */ water_delivered,
+  /* uint16_t */ slave_device_type,
+  /* String */ slave_equipment_id,
+  /* uint8_t */ slave_valve_position,
+  /* TimestampedFixedValue */ slave_delivered
+>;
+
 using DSMRData = ParsedData<
 //  /* String */ identification,
 //  /* String */ p1_version,
@@ -134,6 +192,38 @@ using DSMRData = ParsedData<
 //  /* uint8_t */ slave_valve_position,
 //  /* TimestampedFixedValue */ slave_delivered
 >;
+
+/**
+ * This illustrates looping over all parsed fields using the
+ * ParsedData::applyEach method.
+ *
+ * When passed an instance of this Printer object, applyEach will loop
+ * over each field and call Printer::apply, passing a reference to each
+ * field in turn. This passes the actual field object, not the field
+ * value, so each call to Printer::apply will have a differently typed
+ * parameter.
+ *
+ * For this reason, Printer::apply is a template, resulting in one
+ * distinct apply method for each field used. This allows looking up
+ * things like Item::name, which is different for every field type,
+ * without having to resort to virtual method calls (which result in
+ * extra storage usage). The tradeoff is here that there is more code
+ * generated (but due to compiler inlining, it's pretty much the same as
+ * if you just manually printed all field names and values (with no
+ * cost at all if you don't use the Printer).
+ */
+struct Printer {
+  template<typename Item>
+  void apply(Item &i) {
+    if (i.present()) {
+      Serial.print(Item::name);
+      Serial.print(F(": "));
+      Serial.print(i.val());
+      Serial.print(Item::unit());
+      Serial.println();
+    }
+  }
+};
 
 P1Reader reader(&Serial, P1_DATA_REQ);
 DSMRData data;
@@ -220,13 +310,55 @@ void setup() {
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
   });
   ArduinoOTA.onError([](ota_error_t error) {
+    // Blink 3 times with red
+    digitalWrite(LED_RED, ON);
+    delay(500);
+    digitalWrite(LED_RED, OFF);
+    delay(250);
+    digitalWrite(LED_RED, ON);
+    delay(500);
+    digitalWrite(LED_RED, OFF);
+    delay(250);
+    digitalWrite(LED_RED, ON);
+    delay(500);
+    digitalWrite(LED_RED, OFF);
   });
   ArduinoOTA.begin();
 
   Serial.println("   ... done");
 
-  // start a read right away
-  reader.enable(false); // with parameter once=false for continuous readings
+  Serial.println("Entering the first test of the readout");
+  Serial.println("   Opening connection to MQTT..");
+  // start a read right away and report back.
+  if (!pubsubClient.connected()) {
+    reconnect();
+  }
+  Serial.println("   ... done");
+
+  Serial.println("   Trying to do a read...");
+  pubsubClient.publish(dsmr_debug, "Start of first read");
+  reader.enable(true); // NOT with parameter once=false for continuous readings
+  if (reader.available()) {
+    pubsubClient.publish(dsmr_debug, "Reader seems to be available at the start.");
+    Serial.println("   Reader seems to be available at the start.");
+    MyData data;
+    String err;
+    if (reader.parse(&data, &err)) {
+      // Parse succesful, print result
+      data.applyEach(Printer());
+      Serial.println("   Successful parse!");
+      pubsubClient.publish(dsmr_debug, "Successful parse!");
+    } else {
+      // Parser error, print error
+      Serial.println("   here was an error during parsing!");
+      pubsubClient.publish(dsmr_debug, "There was an error during parsing!");
+    }
+  } else {
+    Serial.println("   Reader not available from the start.");
+    pubsubClient.publish(dsmr_debug, "Reader not available from the start.");
+  }
+  Serial.println("   ... done");
+  
 
 //  digitalWrite(LED_RED, ON);
   digitalWrite(LED_BLUE, OFF);
@@ -245,6 +377,9 @@ void loop() {
   DSMRData data;
   String err;
   unsigned long currentMillis;
+
+  // Make sure the MQTT conncetion stays alive
+  // keepalive();
     
   ArduinoOTA.handle();
 
@@ -269,20 +404,55 @@ void loop() {
       if (reader.parse(&data, &err)) {
         Serial.println("Going public!");
         publish(data);
-      }
+      } else {
+        pubsubClient.publish(dsmr_debug, "Reader not parsing?");
+        delay(5000); // Wait 5 sec
+      }      
       digitalWrite(LED_BLUE, OFF);
+    } else {
+      pubsubClient.publish(dsmr_debug, "Reader not available, sleeping for 5 min.");
+      delay(300000); // Wait 5 min
     }
   }
 }
 
 void reconnect() {
+  
   // Attempt to connect to the mqtt broker
-  if (pubsubClient.connect(client_id, mqtt_user, mqtt_password)) {
-    // Once connected, publish an announcement...
-    Serial.println("Sending first connection to the MQTT broker...");
-    pubsubClient.publish(dsmr_topic, "CONNECTED");
-    Serial.println("   ... done");
-  }
+    if (pubsubClient.connect(client_id, mqtt_user, mqtt_password)) {
+      // Once connected, publish an announcement...
+      Serial.println("Sending first connection to the MQTT broker...");
+      pubsubClient.publish(dsmr_topic, "CONNECTED");
+      Serial.println("   ... done");
+    }
+    
+    if (!pubsubClient.connected()) {
+      // If still not connected, than wait 1 sec and retry
+      delay(1000) ;
+    }
+    
+}
+
+void keepalive() {
+
+  if (pubsubClient.connected()) {
+     pubsubClient.publish(dsmr_debug, "(keeping connection alive)");
+  } else {
+
+    while (!pubsubClient.connected()) {
+      
+      if (pubsubClient.connect(client_id, mqtt_user, mqtt_password)) {
+        // Once connected, publish an announcement...
+        Serial.println("Sending first connection to the MQTT broker...");
+        pubsubClient.publish(dsmr_topic, "CONNECTED");
+        Serial.println("   ... done");
+      }
+      
+      if (!pubsubClient.connected()) { // If still not connected, than wait 1 sec and retry
+        delay(1000);
+      }
+    }
+  }    
 }
 
 void publish(DSMRData data) {
